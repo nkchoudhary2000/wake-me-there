@@ -1,0 +1,9 @@
+<resources>
+    <color name="primary">#006495</color>
+    <color name="primary_container">#CCE5FF</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="surface">#F8F9FA</color>
+    <color name="alarm_red">#D32F2F</color>
+    <color name="alarm_red_container">#FFDAD6</color>
+</resources>
+

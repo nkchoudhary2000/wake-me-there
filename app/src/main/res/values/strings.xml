@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Wake Me There</string>
+    <string name="tracking_notification_title">Location Alarm Active</string>
+    <string name="tracking_notification_text">Monitoring %d destination(s) in background</string>
+    <string name="alarm_notification_title">Destination Reached!</string>
+    <string name="alarm_notification_text">You have arrived at %s</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_snooze">Snooze (5 min)</string>
+    <string name="channel_tracker_name">Background Tracking</string>
+    <string name="channel_tracker_desc">Shows ongoing persistent location monitoring status.</string>
+    <string name="channel_alarm_name">Wake Me There Alarms</string>
+    <string name="channel_alarm_desc">Loud alarm triggers when entering target geographical radius.</string>
+</resources>
+
