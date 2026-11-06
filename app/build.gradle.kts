@@ -43,7 +43,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.wakemethere.app"
+        applicationId = "com.wakemethere.location"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
