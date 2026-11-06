@@ -57,6 +57,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 putExtra(AlarmPlayerService.EXTRA_VIBRATE, alarm.vibrate)
                                 putExtra(AlarmPlayerService.EXTRA_ENABLE_VOICE, alarm.enableVoiceAnnouncement)
                                 putExtra(AlarmPlayerService.EXTRA_VOICE_STYLE, alarm.voiceAnnouncementStyle)
+                                putExtra(AlarmPlayerService.EXTRA_RADIUS_METERS, alarm.radiusMeters)
                             }
                             ContextCompat.startForegroundService(context, startAlarmIntent)
                         }

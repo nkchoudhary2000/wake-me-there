@@ -1,7 +1,9 @@
 package com.wakemethere.app.ui.home
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Intent
+import android.location.Location
 import android.media.RingtoneManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -40,6 +42,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    private val fusedLocationClient =
+        LocationServices.getFusedLocationProviderClient(application)
+
+    private val _currentLocation = MutableStateFlow<Location?>(null)
+    val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
+
     private val _isIgnoringBatteryOptimizations = MutableStateFlow(true)
     val isIgnoringBatteryOptimizations: StateFlow<Boolean> = _isIgnoringBatteryOptimizations.asStateFlow()
 
@@ -63,6 +71,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _hasFineLocationPermission.value = PermissionUtils.hasFineLocationPermission(context)
         _hasBackgroundLocationPermission.value = PermissionUtils.hasBackgroundLocationPermission(context)
         _hasNotificationPermission.value = PermissionUtils.hasNotificationPermission(context)
+        refreshLocation()
+    }
+
+    @SuppressLint("MissingPermission")
+    fun refreshLocation() {
+        val context = getApplication<Application>()
+        if (!PermissionUtils.hasFineLocationPermission(context)) return
+        viewModelScope.launch {
+            try {
+                val loc = fusedLocationClient.lastLocation.await()
+                if (loc != null) {
+                    _currentLocation.value = loc
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
     }
 
     fun toggleAlarm(alarm: LocationAlarm, isEnabled: Boolean) {
@@ -77,6 +102,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 LocationTrackerService.startService(context)
             } else {
                 geofenceManager.removeGeofence(alarm.id)
+                LocationTrackerService.stopService(context)
             }
         }
     }
@@ -142,9 +168,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             geofenceManager.removeGeofence(alarm.id)
 
             val activeAlarms = repository.getActiveAlarmsSync()
+            val context = getApplication<Application>()
             if (activeAlarms.isNotEmpty()) {
-                val context = getApplication<Application>()
                 LocationTrackerService.startService(context)
+            } else {
+                LocationTrackerService.stopService(context)
             }
         }
     }

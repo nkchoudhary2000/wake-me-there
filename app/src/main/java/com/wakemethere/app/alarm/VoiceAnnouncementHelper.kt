@@ -214,6 +214,15 @@ class VoiceAnnouncementHelper(
             1 to Pair("Transit Commute", "Attention! Arriving at [Location]. Please prepare to get off."),
             2 to Pair("Calm Reminder", "You have reached your destination: [Location].")
         )
+
+        fun getStyleShortLabel(style: Int): String {
+            return when (style) {
+                0 -> "Wake-Up"
+                1 -> "Transit"
+                2 -> "Calm"
+                else -> "Style $style"
+            }
+        }
     }
 }
 

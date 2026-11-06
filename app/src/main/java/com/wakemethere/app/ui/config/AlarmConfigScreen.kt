@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
@@ -94,10 +95,27 @@ fun AlarmConfigScreen(
     val currentLat by viewModel.latitude.collectAsState()
     val currentLng by viewModel.longitude.collectAsState()
     val currentRadius by viewModel.radiusMeters.collectAsState()
+    val userLocation by viewModel.currentLocation.collectAsState()
 
     val displayLat = if (currentLat != 0.0) currentLat else latitude
     val displayLng = if (currentLng != 0.0) currentLng else longitude
     val displayRadius = if (currentRadius > 0f) currentRadius else radiusMeters
+
+    val distanceFromUser = userLocation?.let { loc ->
+        if (displayLat != 0.0 || displayLng != 0.0) {
+            DistanceCalculator.calculateDistanceMeters(
+                loc.latitude,
+                loc.longitude,
+                displayLat,
+                displayLng
+            )
+        } else null
+    }
+
+    // Refresh user location when screen appears
+    LaunchedEffect(Unit) {
+        viewModel.fetchCurrentLocation()
+    }
 
     // Load alarm if in edit mode, or initialize location if in new mode
     LaunchedEffect(alarmIdToEdit, latitude, longitude, radiusMeters) {
@@ -290,6 +308,65 @@ fun AlarmConfigScreen(
                         }
                     }
 
+                    // Real-time Distance from User Section
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NearMe,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Distance from your location",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                if (distanceFromUser != null) {
+                                    Text(
+                                        text = DistanceCalculator.formatDistanceDetailed(distanceFromUser),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    val distanceToBoundary = (distanceFromUser - displayRadius).coerceAtLeast(0f)
+                                    val statusText = if (distanceFromUser <= displayRadius) {
+                                        "🎯 Inside ${DistanceCalculator.formatDistance(displayRadius)} radius"
+                                    } else {
+                                        "🔔 Triggers in ${DistanceCalculator.formatDistance(distanceToBoundary)}"
+                                    }
+                                    Text(
+                                        text = statusText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Acquiring GPS location...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
@@ -436,17 +513,25 @@ fun AlarmConfigScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Style selector chips
+                        // Style selector chips (horizontal scroll + concise label prevents text wrapping)
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            VoiceAnnouncementHelper.STYLES.forEach { (styleId, info) ->
-                                val (label, _) = info
+                            VoiceAnnouncementHelper.STYLES.forEach { (styleId, _) ->
+                                val shortLabel = VoiceAnnouncementHelper.getStyleShortLabel(styleId)
                                 FilterChip(
                                     selected = voiceAnnouncementStyle == styleId,
                                     onClick = { viewModel.setVoiceAnnouncementStyle(styleId) },
-                                    label = { Text(label, style = MaterialTheme.typography.bodySmall) }
+                                    label = {
+                                        Text(
+                                            text = shortLabel,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1
+                                        )
+                                    }
                                 )
                             }
                         }

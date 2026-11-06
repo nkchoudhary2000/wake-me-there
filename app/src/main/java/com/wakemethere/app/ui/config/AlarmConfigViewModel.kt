@@ -1,12 +1,17 @@
 package com.wakemethere.app.ui.config
 
+import android.annotation.SuppressLint
 import android.app.Application
+import android.location.Location
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.wakemethere.app.WakeMeThereApp
 import com.wakemethere.app.alarm.VoiceAnnouncementHelper
 import com.wakemethere.app.data.model.AlarmCategory
@@ -14,6 +19,7 @@ import com.wakemethere.app.data.model.LocationAlarm
 import com.wakemethere.app.data.repository.AlarmRepository
 import com.wakemethere.app.location.GeofenceManager
 import com.wakemethere.app.location.LocationTrackerService
+import com.wakemethere.app.util.PermissionUtils
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -21,11 +27,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class AlarmConfigViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: AlarmRepository = (application as WakeMeThereApp).repository
     private val geofenceManager = GeofenceManager(application)
+    private val fusedLocationClient =
+        LocationServices.getFusedLocationProviderClient(application)
+
+    private val _currentLocation = MutableStateFlow<Location?>(null)
+    val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
 
     private val _editingAlarmId = MutableStateFlow<Long?>(null)
     val editingAlarmId: StateFlow<Long?> = _editingAlarmId.asStateFlow()
@@ -87,6 +99,25 @@ class AlarmConfigViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         resolveRingtoneTitle(defaultRingtoneUri)
+        fetchCurrentLocation()
+    }
+
+    @SuppressLint("MissingPermission")
+    fun fetchCurrentLocation() {
+        val context = getApplication<Application>()
+        if (!PermissionUtils.hasFineLocationPermission(context)) return
+
+        viewModelScope.launch {
+            try {
+                val location = fusedLocationClient.lastLocation.await()
+                    ?: fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
+                if (location != null) {
+                    _currentLocation.value = location
+                }
+            } catch (e: Exception) {
+                Log.w("AlarmConfigViewModel", "Failed to fetch current location", e)
+            }
+        }
     }
 
     fun setName(newName: String) {
@@ -304,6 +335,8 @@ class AlarmConfigViewModel(application: Application) : AndroidViewModel(applicat
                 geofenceManager.registerGeofences(activeAlarms)
                 if (activeAlarms.isNotEmpty()) {
                     LocationTrackerService.startService(getApplication())
+                } else {
+                    LocationTrackerService.stopService(getApplication())
                 }
             } else {
                 // Save new alarm

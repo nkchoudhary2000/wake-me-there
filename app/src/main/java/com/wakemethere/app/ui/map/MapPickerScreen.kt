@@ -1,9 +1,13 @@
 package com.wakemethere.app.ui.map
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +25,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,7 +36,6 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -99,6 +101,12 @@ fun MapPickerScreen(
     val radiusMeters by viewModel.radiusMeters.collectAsState()
     val isOfflineMode by viewModel.isOfflineFallbackMode.collectAsState()
 
+    // When search suggestions are actively shown, pressing hardware back dismisses them
+    BackHandler(enabled = searchResults.isNotEmpty()) {
+        viewModel.clearSearch()
+        focusManager.clearFocus()
+    }
+
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(selectedLocation, 15f)
     }
@@ -118,6 +126,7 @@ fun MapPickerScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // 1. Base Map Layer
         if (isOfflineMode) {
             OfflineMapFallback(
                 selectedLocation = selectedLocation,
@@ -128,7 +137,6 @@ fun MapPickerScreen(
                 }
             )
         } else {
-            // Google Maps View
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
@@ -143,6 +151,9 @@ fun MapPickerScreen(
                 ),
                 onMapClick = { latLng ->
                     focusManager.clearFocus()
+                    if (searchResults.isNotEmpty()) {
+                        viewModel.clearSearch()
+                    }
                     viewModel.setLocation(latLng)
                 }
             ) {
@@ -165,7 +176,226 @@ fun MapPickerScreen(
             }
         }
 
-        // Top Search Bar & Controls Header
+        // 2. My Location Floating Button (only visible when not browsing search suggestions)
+        if (!isOfflineMode && currentLocation != null && searchResults.isEmpty()) {
+            SmallFloatingActionButton(
+                onClick = {
+                    currentLocation?.let { current ->
+                        viewModel.setLocation(current, currentAreaName)
+                        coroutineScope.launch {
+                            cameraPositionState.animate(
+                                CameraUpdateFactory.newLatLngZoom(current, 16f)
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 350.dp, end = 16.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(Icons.Default.MyLocation, contentDescription = "Center on GPS")
+            }
+        }
+
+        // 3. Bottom Configuration & Confirmation Sheet ("Set Alarm for This Area")
+        // Visible by default and whenever search suggestions are not active.
+        AnimatedVisibility(
+            visible = searchResults.isEmpty(),
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    // Destination Name and Distance Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = selectedAreaName,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%.5f, %.5f", selectedLocation.latitude, selectedLocation.longitude),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Distance from Current Location
+                        currentLocation?.let { current ->
+                            val distance = DistanceCalculator.calculateDistanceMeters(
+                                current.latitude,
+                                current.longitude,
+                                selectedLocation.latitude,
+                                selectedLocation.longitude
+                            )
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Distance",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = DistanceCalculator.formatDistance(distance),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "${distance.toInt()} m",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Real-time Distance & Trigger Zone Banner
+                    currentLocation?.let { current ->
+                        val distance = DistanceCalculator.calculateDistanceMeters(
+                            current.latitude,
+                            current.longitude,
+                            selectedLocation.latitude,
+                            selectedLocation.longitude
+                        )
+                        val remainingToTrigger = (distance - radiusMeters).coerceAtLeast(0f)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.NearMe,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (distance <= radiusMeters) {
+                                        "Inside trigger radius • ${DistanceCalculator.formatDistance(distance)}"
+                                    } else {
+                                        "${DistanceCalculator.formatDistance(distance)} away • ${DistanceCalculator.formatDistance(remainingToTrigger)} to radius"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Radius Selector Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Trigger Radius",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = DistanceCalculator.formatDistance(radiusMeters),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Slider from 100m to 5000m
+                    Slider(
+                        value = radiusMeters,
+                        onValueChange = { viewModel.setRadius(it) },
+                        valueRange = 100f..5000f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+
+                    // Quick Radius Presets
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val presets = listOf(100f, 250f, 500f, 1000f, 2000f, 5000f)
+                        presets.forEach { preset ->
+                            FilterChip(
+                                selected = (radiusMeters == preset),
+                                onClick = { viewModel.setRadius(preset) },
+                                label = { Text(DistanceCalculator.formatDistance(preset)) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Confirm Destination Button
+                    Button(
+                        onClick = {
+                            onConfirmLocation(
+                                selectedLocation.latitude,
+                                selectedLocation.longitude,
+                                radiusMeters,
+                                selectedAreaName
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        Text(
+                            text = "Set Alarm for This Area",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                    }
+                }
+            }
+        }
+
+        // 4. Top Search Bar & Suggestions Overlay (Placed LAST so it renders ON TOP of everything)
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -185,6 +415,7 @@ fun MapPickerScreen(
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Back button ALWAYS navigates back
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -217,8 +448,13 @@ fun MapPickerScreen(
                                 .padding(end = 4.dp),
                             strokeWidth = 2.dp
                         )
-                    } else if (searchQuery.isNotBlank()) {
-                        IconButton(onClick = { viewModel.clearSearch() }) {
+                    } else if (searchQuery.isNotBlank() || searchResults.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                viewModel.clearSearch()
+                                focusManager.clearFocus()
+                            }
+                        ) {
                             Icon(Icons.Default.Clear, contentDescription = "Clear search")
                         }
                     }
@@ -234,22 +470,22 @@ fun MapPickerScreen(
                 }
             }
 
-            // Search Results Dropdown List
+            // Search Results Dropdown List (renders immediately below search box on top layer)
             AnimatedVisibility(
                 visible = searchResults.isNotEmpty(),
-                enter = fadeIn(),
-                exit = fadeOut()
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
-                        .heightIn(max = 280.dp),
+                        .heightIn(max = 350.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
                         items(searchResults) { place ->
@@ -315,8 +551,8 @@ fun MapPickerScreen(
                 }
             }
 
-            // Current Area GPS Banner (e.g., "📍 You are in: Marathahalli, Bengaluru")
-            if (currentAreaName != null) {
+            // Current Area GPS Banner (only shown when search suggestions are not active)
+            if (searchResults.isEmpty() && currentAreaName != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     modifier = Modifier
@@ -354,165 +590,6 @@ fun MapPickerScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                }
-            }
-        }
-
-        // My Location Button (Floating above bottom sheet)
-        if (!isOfflineMode && currentLocation != null) {
-            SmallFloatingActionButton(
-                onClick = {
-                    currentLocation?.let { current ->
-                        viewModel.setLocation(current, currentAreaName)
-                        coroutineScope.launch {
-                            cameraPositionState.animate(
-                                CameraUpdateFactory.newLatLngZoom(current, 16f)
-                            )
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 280.dp, end = 16.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.MyLocation, contentDescription = "Center on GPS")
-            }
-        }
-
-        // Bottom Configuration & Confirmation Sheet
-        Card(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {
-                // Destination Name and Distance Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = selectedAreaName,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = String.format(Locale.US, "%.5f, %.5f", selectedLocation.latitude, selectedLocation.longitude),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Distance from Current Location
-                    currentLocation?.let { current ->
-                        val distance = DistanceCalculator.calculateDistanceMeters(
-                            current.latitude,
-                            current.longitude,
-                            selectedLocation.latitude,
-                            selectedLocation.longitude
-                        )
-                        Text(
-                            text = DistanceCalculator.formatDistance(distance),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Radius Selector Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Trigger Radius",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = DistanceCalculator.formatDistance(radiusMeters),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Slider from 100m to 5000m
-                Slider(
-                    value = radiusMeters,
-                    onValueChange = { viewModel.setRadius(it) },
-                    valueRange = 100f..5000f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-
-                // Quick Radius Presets
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val presets = listOf(100f, 250f, 500f, 1000f, 2000f, 5000f)
-                    presets.forEach { preset ->
-                        FilterChip(
-                            selected = (radiusMeters == preset),
-                            onClick = { viewModel.setRadius(preset) },
-                            label = { Text(DistanceCalculator.formatDistance(preset)) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Confirm Destination Button
-                Button(
-                    onClick = {
-                        onConfirmLocation(
-                            selectedLocation.latitude,
-                            selectedLocation.longitude,
-                            radiusMeters,
-                            selectedAreaName
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text(
-                        text = "Set Alarm for This Area",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                 }
             }
         }

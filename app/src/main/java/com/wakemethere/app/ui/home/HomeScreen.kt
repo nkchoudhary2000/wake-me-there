@@ -97,6 +97,7 @@ fun HomeScreen(
     val hasFineLocation by viewModel.hasFineLocationPermission.collectAsState()
     val hasBackgroundLocation by viewModel.hasBackgroundLocationPermission.collectAsState()
     val hasNotification by viewModel.hasNotificationPermission.collectAsState()
+    val currentLocation by viewModel.currentLocation.collectAsState()
 
     var alarmToDelete by remember { mutableStateOf<LocationAlarm?>(null) }
     var showQuickSaveSpotDialog by remember { mutableStateOf(false) }
@@ -117,9 +118,13 @@ fun HomeScreen(
                         )
                         val activeCount = alarms.count { it.isEnabled }
                         Text(
-                            text = if (activeCount > 0) "$activeCount alarm(s) active" else "No alarms active",
+                            text = if (activeCount > 0) {
+                                "$activeCount active • GPS tracking"
+                            } else {
+                                "All idle • GPS off (saving battery)"
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (activeCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
@@ -344,6 +349,7 @@ fun HomeScreen(
                     items(items = alarms, key = { it.id }) { alarm ->
                         AlarmItemCard(
                             alarm = alarm,
+                            currentLocation = currentLocation,
                             onToggle = { isEnabled -> viewModel.toggleAlarm(alarm, isEnabled) },
                             onEdit = { onNavigateToEditAlarm(alarm.id) },
                             onDelete = { alarmToDelete = alarm },

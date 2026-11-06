@@ -20,13 +20,25 @@ object DistanceCalculator {
     }
 
     /**
-     * Nicely formats distance in meters or kilometers.
+     * Nicely formats distance in meters or kilometers (compact).
      */
     fun formatDistance(meters: Float): String {
         return if (meters < 1000f) {
             String.format(Locale.getDefault(), "%d m", meters.toInt())
         } else {
             String.format(Locale.getDefault(), "%.1f km", meters / 1000f)
+        }
+    }
+
+    /**
+     * Formats distance showing both kilometers and meters with high clarity
+     * (e.g., "2.40 km (2,400 m)" or "450 m").
+     */
+    fun formatDistanceDetailed(meters: Float): String {
+        return if (meters < 1000f) {
+            String.format(Locale.getDefault(), "%d m", meters.toInt())
+        } else {
+            String.format(Locale.getDefault(), "%.2f km (%,d m)", meters / 1000f, meters.toInt())
         }
     }
 }

@@ -37,10 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wakemethere.app.ui.components.SlideToDismissBar
 import com.wakemethere.app.ui.theme.AlarmRed
+import com.wakemethere.app.util.DistanceCalculator
 
 @Composable
 fun ActiveAlarmScreen(
     destinationName: String,
+    distanceMeters: Float? = null,
+    radiusMeters: Float = 500f,
     onDismissAlarm: () -> Unit,
     onSnoozeAlarm: () -> Unit,
     modifier: Modifier = Modifier
@@ -107,9 +110,14 @@ fun ActiveAlarmScreen(
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
+                val statusDetail = if (distanceMeters != null) {
+                    "Inside ${DistanceCalculator.formatDistance(radiusMeters)} radius • ${DistanceCalculator.formatDistanceDetailed(distanceMeters)} remaining to center"
+                } else {
+                    "You have entered your ${DistanceCalculator.formatDistance(radiusMeters)} trigger radius."
+                }
                 Text(
-                    text = "You have entered your specified geofence radius.",
-                    color = Color.White.copy(alpha = 0.7f),
+                    text = statusDetail,
+                    color = Color.White.copy(alpha = 0.85f),
                     fontSize = 15.sp,
                     textAlign = TextAlign.Center
                 )
