@@ -74,4 +74,5 @@ If we update this Privacy Policy, the updated version will be posted here with a
 If you have any questions or feedback regarding this Privacy Policy, please contact:
 * **Developer**: Niraj Choudhary
 * **Email**: niraj.choudhary1995@gmail.com
-* **Project Repository**: https://github.com/niraj/wake-me-there
+* **Project Repository**: https://github.com/nkchoudhary2000/wake-me-there
+
